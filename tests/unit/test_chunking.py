@@ -1,11 +1,12 @@
 
 from types import SimpleNamespace
 
-from src.chunking.structural import chunk_page_structurally
-from src.vanka.structure.detector import get_approved_heading_texts
-from src.chunking.recursive import RecursiveChunker
-from src.chunking.fixed import FixedSizeChunker
-from src.chunking.semantic import SemanticChunker
+
+from vanka.chunking.structural import chunk_page_structurally
+from vanka.structure.detector import get_approved_heading_texts
+from vanka.chunking.recursive import RecursiveChunker
+from vanka.chunking.fixed import FixedSizeChunker
+from vanka.chunking.semantic import SemanticChunker
 
 def test_chunk_text_reconstructs_page_without_loss():
     source_text = (
@@ -164,7 +165,7 @@ def test_approved_detector_headings_drive_structural_chunks():
     ]
     assert "".join(chunk.text for chunk in chunks) == text
 
-from src.chunking.fixed import FixedSizeChunker
+from vanka.chunking.fixed import FixedSizeChunker
 
 
 def test_fixed_size_chunker_respects_size_and_overlap():
@@ -274,3 +275,4 @@ def test_semantic_chunker_respects_max_chars():
 
     assert all(len(chunk.text) <= 100 for chunk in chunks)
     assert "".join(chunk.text for chunk in chunks) == source_text
+

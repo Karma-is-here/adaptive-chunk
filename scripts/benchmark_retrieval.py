@@ -5,14 +5,16 @@ import json
 import re
 import statistics
 from pathlib import Path
+from dataclasses import asdict
 
-from chunking.embeddings import SentenceTransformerEmbedder
-from chunking.fixed import FixedSizeChunker
-from chunking.recursive import RecursiveChunker
-from chunking.semantic import SemanticChunker
-from chunking.structural import chunk_page_structurally
+from vanka.chunking.embeddings import SentenceTransformerEmbedder
+from vanka.chunking.fixed import FixedSizeChunker
+from vanka.chunking.recursive import RecursiveChunker
+from vanka.chunking.semantic import SemanticChunker
+from vanka.chunking.structural import chunk_page_structurally
 from vanka.ingestion.normalized_json import load_normalized_pages
 from vanka.structure.detector import detect_candidate_headings
+from vanka.selection.selector import ChunkerSelector
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -217,6 +219,9 @@ def main():
         device="cpu",
     )
 
+    #selector instantiation.
+    selector = ChunkerSelector()
+
     all_document_results = []
 
     for document_path in document_paths:
@@ -246,6 +251,7 @@ def main():
         per_question = {}
 
         for name, chunks in strategies:
+            
             print(f"\n{'=' * 24} {name.upper()} {'=' * 24}")
 
             if document_questions:
@@ -270,7 +276,19 @@ def main():
                     "mrr": None,
                 }
 
+            
             summaries.append(summary)
+        
+        selection = selector.select(summaries)
+        print("\nCHUNKER SELECTION")
+        print(f"Selected strategy: {selection.selected_strategy}")
+        print(f"Selection score: {selection.selection_score:.4f}")
+        print(f"Reason: {selection.selection_reason}")
+
+        if selection.rejected_candidates:
+            print("\nRejected candidates:")
+            for rejected in selection.rejected_candidates:
+                print(f"  {rejected}")
 
         print(f"\nPages: {len(pages)}")
         if document_questions:
@@ -337,6 +355,16 @@ def main():
                 "page_count": len(pages),
                 "question_count": len(document_questions),
                 "summaries": summaries,
+
+                "selection": {
+                    "selected_strategy": selection.selected_strategy,
+                    "selection_score": selection.selection_score,
+                    "selection_reason": selection.selection_reason,
+                    "selected_metrics": selection.selected_metrics,
+                    "candidates": selection.candidates,
+                    "rejected_candidates": selection.rejected_candidates,
+                },
+
                 "per_question": per_question,
             }
         )
@@ -357,3 +385,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -4,11 +4,11 @@ from __future__ import annotations
 import statistics
 from pathlib import Path
 
-from chunking.embeddings import SentenceTransformerEmbedder
-from chunking.fixed import FixedSizeChunker
-from chunking.recursive import RecursiveChunker
-from chunking.semantic import SemanticChunker
-from chunking.structural import chunk_page_structurally
+from vanka.chunking.embeddings import SentenceTransformerEmbedder
+from vanka.chunking.fixed import FixedSizeChunker
+from vanka.chunking.recursive import RecursiveChunker
+from vanka.chunking.semantic import SemanticChunker
+from vanka.chunking.structural import chunk_page_structurally
 from vanka.ingestion.normalized_json import load_normalized_pages
 from vanka.structure.detector import detect_candidate_headings
 

@@ -1,3 +1,5 @@
+#semnatic
+
 from __future__ import annotations
 
 import hashlib
@@ -9,8 +11,8 @@ try:
 except ImportError:  # pragma: no cover - exercised without the semantic extra
     np = None  # type: ignore[assignment]
 
-from chunking.base import Chunker
-from models.chunk import Chunk
+from vanka.chunking.base import Chunker
+from vanka.models.chunk import Chunk
 
 
 class Embedder(Protocol):

@@ -1,6 +1,6 @@
 from vanka.ingestion.normalized_json import load_normalized_pages
 from vanka.structure.detector import get_approved_heading_texts
-from chunking.structural import chunk_page_structurally
+from vanka.chunking.structural import chunk_page_structurally
 
 
 
@@ -69,6 +69,7 @@ for page in pages:
             f"strategy={chunk.strategy}"
         )
         print(chunk.text[:700])
+
 
 
 

@@ -1,10 +1,12 @@
+#fixed
+
 from __future__ import annotations
 
 import hashlib
 from typing import Sequence
 
-from chunking.base import Chunker
-from models.chunk import Chunk
+from vanka.chunking.base import Chunker
+from vanka.models.chunk import Chunk
 
 
 class FixedSizeChunker(Chunker):

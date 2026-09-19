@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Sequence
 
-from models.chunk import Chunk
+from vanka.models.chunk import Chunk
 
 
 class Chunker(ABC):

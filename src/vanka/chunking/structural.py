@@ -1,9 +1,11 @@
+#structural
+
 from __future__ import annotations
 
 import hashlib
 from typing import Iterable
 
-from models.chunk import Chunk
+from vanka.models.chunk import Chunk
 
 
 def _make_chunk(
