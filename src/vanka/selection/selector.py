@@ -8,6 +8,7 @@ from typing import Any, Iterable
 class ChunkerMetrics:
     """
     Retrieval and chunk-quality metrics for one chunking strategy.
+    Retrieval metrics may be None when no benchmark questions exist.
     """
 
     strategy: str
@@ -16,10 +17,10 @@ class ChunkerMetrics:
     median_chars: float
     under_100_chars: int
 
-    recall_at_1: float
-    recall_at_3: float
-    recall_at_5: float
-    mrr: float
+    recall_at_1: float | None
+    recall_at_3: float | None
+    recall_at_5: float | None
+    mrr: float | None
 
     @property
     def under_100_ratio(self) -> float:
@@ -48,25 +49,15 @@ class SelectionResult:
 
 class ChunkerSelector:
     """
-    Select the most appropriate chunking strategy using retrieval
-    performance and chunk-quality constraints.
+    Select the most appropriate chunking strategy.
+
+    When benchmark retrieval metrics are available, selection uses
+    retrieval performance plus chunk-quality gates.
+
+    When retrieval metrics are unavailable, selection uses intrinsic
+    chunk-quality metrics only.
 
     The selector does NOT perform retrieval or reranking.
-
-    Expected input format is the same strategy-summary structure
-    produced by the retrieval benchmark:
-
-        {
-            "strategy": "fixed",
-            "chunks": 37,
-            "mean_chars": 863.6,
-            "median_chars": 1200,
-            "under_100_chars": 3,
-            "recall_at_1": 0.4667,
-            "recall_at_3": 0.5333,
-            "recall_at_5": 0.6,
-            "mrr": 0.5056
-        }
     """
 
     DEFAULT_WEIGHTS = {
@@ -115,7 +106,9 @@ class ChunkerSelector:
             raise ValueError("at least one weight must be positive")
 
     @staticmethod
-    def _normalise_weights(weights: dict[str, float]) -> dict[str, float]:
+    def _normalise_weights(
+        weights: dict[str, float],
+    ) -> dict[str, float]:
         total = sum(weights.values())
 
         return {
@@ -124,22 +117,27 @@ class ChunkerSelector:
         }
 
     @staticmethod
-    def _metric_value(value: Any) -> float:
+    def _metric_value(
+        value: Any,
+    ) -> float | None:
         """
-        Safely convert a benchmark metric to float.
+        Convert a metric to float without turning missing values
+        into zero.
 
-        Missing/None values are treated as 0 so that a malformed
-        strategy cannot accidentally win the selection.
+        None means that the metric is unavailable.
         """
         if value is None:
-            return 0.0
+            return None
 
         try:
             return float(value)
         except (TypeError, ValueError):
-            return 0.0
+            return None
 
-    def _parse_metrics(self, summary: dict[str, Any]) -> ChunkerMetrics:
+    def _parse_metrics(
+        self,
+        summary: dict[str, Any],
+    ) -> ChunkerMetrics:
         required = [
             "strategy",
             "chunks",
@@ -170,10 +168,18 @@ class ChunkerSelector:
             mean_chars=float(summary["mean_chars"]),
             median_chars=float(summary["median_chars"]),
             under_100_chars=int(summary["under_100_chars"]),
-            recall_at_1=self._metric_value(summary["recall_at_1"]),
-            recall_at_3=self._metric_value(summary["recall_at_3"]),
-            recall_at_5=self._metric_value(summary["recall_at_5"]),
-            mrr=self._metric_value(summary["mrr"]),
+            recall_at_1=self._metric_value(
+                summary["recall_at_1"]
+            ),
+            recall_at_3=self._metric_value(
+                summary["recall_at_3"]
+            ),
+            recall_at_5=self._metric_value(
+                summary["recall_at_5"]
+            ),
+            mrr=self._metric_value(
+                summary["mrr"]
+            ),
         )
 
     def _quality_gate(
@@ -209,23 +215,123 @@ class ChunkerSelector:
 
         return not reasons, reasons
 
-    def _score(self, metrics: ChunkerMetrics) -> float:
+    def _has_retrieval_metrics(
+        self,
+        metrics: ChunkerMetrics,
+    ) -> bool:
         """
-        Calculate the retrieval-performance score.
-
-        Higher is better.
+        Return True when at least one retrieval metric is available.
         """
 
-        weights = self._normalise_weights(self.weights)
+        return any(
+            value is not None
+            for value in (
+                metrics.recall_at_1,
+                metrics.recall_at_3,
+                metrics.recall_at_5,
+                metrics.mrr,
+            )
+        )
 
-        score = (
-            weights["recall_at_1"] * metrics.recall_at_1
-            + weights["recall_at_3"] * metrics.recall_at_3
-            + weights["recall_at_5"] * metrics.recall_at_5
-            + weights["mrr"] * metrics.mrr
+    def _retrieval_score(
+        self,
+        metrics: ChunkerMetrics,
+    ) -> float:
+        """
+        Calculate retrieval-performance score using only metrics
+        that are actually available.
+
+        Missing metrics are excluded and the remaining weights
+        are renormalized.
+        """
+
+        available = {
+            "recall_at_1": metrics.recall_at_1,
+            "recall_at_3": metrics.recall_at_3,
+            "recall_at_5": metrics.recall_at_5,
+            "mrr": metrics.mrr,
+        }
+
+        available = {
+            key: value
+            for key, value in available.items()
+            if value is not None
+        }
+
+        if not available:
+            raise ValueError(
+                "No retrieval metrics are available."
+            )
+
+        available_weights = {
+            key: self.weights[key]
+            for key in available
+        }
+
+        weights = self._normalise_weights(
+            available_weights
+        )
+
+        score = sum(
+            weights[key] * available[key]
+            for key in available
         )
 
         return round(score, 6)
+
+    def _intrinsic_score(
+        self,
+        metrics: ChunkerMetrics,
+    ) -> float:
+        """
+        Calculate an intrinsic chunk-quality score.
+
+        This is used when benchmark questions are unavailable.
+
+        The score rewards:
+        - useful chunk sizes
+        - fewer extremely small chunks
+
+        The quality gates are still applied separately.
+        """
+
+        # 1200 characters is the current target chunk size used
+        # by Vanka's built-in strategies.
+        size_score = min(
+            metrics.median_chars / 1200.0,
+            1.0,
+        )
+
+        small_chunk_score = max(
+            0.0,
+            1.0 - metrics.under_100_ratio,
+        )
+
+        score = (
+            0.60 * size_score
+            + 0.40 * small_chunk_score
+        )
+
+        return round(score, 6)
+
+    def _score(
+        self,
+        metrics: ChunkerMetrics,
+    ) -> float:
+        """
+        Calculate the appropriate strategy score.
+
+        Retrieval metrics available:
+            retrieval score.
+
+        No retrieval metrics available:
+            intrinsic chunk-quality score.
+        """
+
+        if self._has_retrieval_metrics(metrics):
+            return self._retrieval_score(metrics)
+
+        return self._intrinsic_score(metrics)
 
     def select(
         self,
@@ -234,16 +340,10 @@ class ChunkerSelector:
         """
         Select one chunking strategy.
 
-        Parameters
-        ----------
-        summaries:
-            Strategy summaries from retrieval_benchmark.py.
+        Retrieval benchmarks are used when available.
 
-        Returns
-        -------
-        SelectionResult
-            Contains selected strategy, score, metrics, candidates,
-            and rejection reasons.
+        If no retrieval metrics exist, intrinsic chunk-quality
+        metrics are used instead.
         """
 
         parsed: list[ChunkerMetrics] = [
@@ -255,6 +355,11 @@ class ChunkerSelector:
             raise ValueError(
                 "No chunker benchmark results were provided."
             )
+
+        retrieval_available = any(
+            self._has_retrieval_metrics(metrics)
+            for metrics in parsed
+        )
 
         candidates: list[dict[str, Any]] = []
         rejected: list[dict[str, Any]] = []
@@ -306,20 +411,28 @@ class ChunkerSelector:
                 rejected_candidates=rejected,
             )
 
-        # Highest retrieval-performance score wins among
-        # strategies that pass the quality gate.
         selected = max(
             candidates,
             key=lambda item: item["score"],
         )
 
+        if retrieval_available:
+            reason = (
+                "Selected the highest-scoring strategy among "
+                "candidates that passed the chunk-quality gates "
+                "using available retrieval metrics."
+            )
+        else:
+            reason = (
+                "No benchmark retrieval metrics were available; "
+                "selected the highest-scoring strategy using "
+                "intrinsic chunk-quality metrics."
+            )
+
         return SelectionResult(
             selected_strategy=selected["strategy"],
             selection_score=selected["score"],
-            selection_reason=(
-                "Selected the highest-scoring strategy among "
-                "candidates that passed the chunk-quality gates."
-            ),
+            selection_reason=reason,
             selected_metrics=selected["metrics"],
             candidates=sorted(
                 candidates,

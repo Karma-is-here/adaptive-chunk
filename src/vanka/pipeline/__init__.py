@@ -1,7 +1,5 @@
-from vanka.api import Vanka
 from vanka.pipeline.runner import VankaPipeline
 
 __all__ = [
-    "Vanka",
     "VankaPipeline",
 ]

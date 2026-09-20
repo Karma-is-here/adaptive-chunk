@@ -53,6 +53,8 @@ class FixedSizeChunker(Chunker):
                         source_file=page.source_file,
                         page_start=page.page_number,
                         page_end=page.page_number,
+                        char_start=start,
+                        char_end=end,
                         text=piece,
                         strategy=self.name,
                         metadata={

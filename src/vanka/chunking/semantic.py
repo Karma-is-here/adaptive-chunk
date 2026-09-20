@@ -190,9 +190,7 @@ class SemanticChunker(Chunker):
 
         matrix = self._embed_sentences(sentence_texts)
         scores = self._smooth(self._cosine_adjacent(matrix))
-        print("sentence_texts:", sentence_texts)
-        print("normalized embeddings:", matrix)
-        print("similarity scores:", scores)
+        
 
         # Groups carry their sentence-index range so the merge pass can
         # compute per-group centroids without re-embedding.
@@ -369,6 +367,8 @@ class SemanticChunker(Chunker):
                         source_file=page.source_file,
                         page_start=page.page_number,
                         page_end=page.page_number,
+                        char_start=start,
+                        char_end=end,
                         text=text[start:end],
                         strategy=(
                             self.name

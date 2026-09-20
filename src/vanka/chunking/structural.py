@@ -33,6 +33,8 @@ def _make_chunk(
         source_file=source_file,
         page_start=page_number,
         page_end=page_number,
+        char_start=start_offset,
+        char_end=end_offset,
         text=text,
         section_heading=section_heading,
         strategy=strategy,
